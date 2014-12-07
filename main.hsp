@@ -41,11 +41,19 @@
 #include "glfunc.hsp"
 #include "glshader.hsp"
 
+#const PDF_SIZE           40
+#const PDF_VERSION        1
+#const PFD_DRAW_TO_WINDOW $4
+#const PFD_SUPPORT_OPENGL $20
+#const PFD_DOUBLEBUFFER   $1
+#const PFD_TYPE_RGBA      $0
+#const PFD_COLOR_BIT      32
+#const PFD_DEPTH_BIT      32
 
-#const PDFINI1 40/*sizeof(pfd)*/ | (1/*Version*/ << 16)
-#const PDFINI2 $4/*PFD_DRAW_TO_WINDOW*/ | $20/*PFD_SUPPORT_OPENGL*/ | $1/*PFD_DOUBLEBUFFER*/
-#const PDFINI3 $0/*PFD_TYPE_RGBA*/ | (32/*ColorBits*/ << 8)
-#const PDFINI4 32/*DepthBits*/ << 24
+#const PDFINI1 PDF_SIZE | (PDF_VERSION << 16)
+#const PDFINI2 PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER
+#const PDFINI3 PFD_TYPE_RGBA | (PFD_COLOR_BIT << 8)
+#const PDFINI4 PFD_DEPTH_BIT << 24
 
 #enum WIN_MAIN = 0
 #enum WIN_EDIT
