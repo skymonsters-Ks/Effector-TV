@@ -1,0 +1,42 @@
+;$s>main.hsp
+
+#module
+
+
+#deffunc getFunc
+
+	fs = "AttachShader CompileShader CreateProgram CreateShader DeleteProgram DeleteShader GetProgramiv GetUniformLocation LinkProgram ShaderSource Uniform3i UseProgram GetProgramInfoLog"
+	split fs, " ", fa
+	repeat stat
+		wglGetProcAddress "gl" + fa(cnt)
+		if (stat) {
+			pfunc(cnt) = stat
+		} else {
+			uc++
+		}
+	loop
+	return uc
+
+
+#deffunc _glf int _id, int _n, int _p1, int _p2, int _p3, int _p4
+
+	p = _p1, _p2, _p3, _p4
+	return callfunc(p, pfunc(_id), _n)
+
+
+#define global glAttachShader(%1,%2) _glf 0,2,%1,%2
+#define global glCompileShader(%1) _glf 1,1,%1
+#define global glCreateProgram _glf 2,0
+#define global glCreateShader(%1) _glf 3,1,%1
+#define global glDeleteProgram(%1) _glf 4,1,%1
+#define global glDeleteShader(%1) _glf 5,1,%1
+#define global glGetProgramiv(%1,%2,%3) _glf 6,3,%1,%2,%3
+#define global glGetUniformLocation(%1,%2) _glf 7,2,%1,%2
+#define global glLinkProgram(%1) _glf 8,1,%1
+#define global glShaderSource(%1,%2,%3,%4) _glf 9,4,%1,%2,%3,%4
+#define global glUniform3i(%1,%2,%3,%4) _glf 10,4,%1,%2,%3,%4
+#define global glUseProgram(%1) _glf 11,1,%1
+#define global glGetProgramInfoLog(%1,%2,%3,%4) _glf 12,4,%1,%2,%3,%4
+
+
+#global

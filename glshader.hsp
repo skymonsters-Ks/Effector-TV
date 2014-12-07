@@ -1,0 +1,57 @@
+;$s>main.hsp
+
+#module gls
+
+#define GL_FRAGMENT_SHADER  0x8B30
+#define GL_VERTEX_SHADER    0x8B31
+#define GL_LINK_STATUS      0x8B82
+#define GL_INFO_LOG_LENGTH  0x8B84
+
+
+#defcfunc _cmp int _type, var _source
+
+	glCreateShader _type
+	obj = stat
+	len = strlen(_source)
+	ps = varptr(_source)
+	glShaderSource obj, 1, varptr(ps), varptr(len)
+	glCompileShader obj
+	return obj
+
+
+#deffunc setprg var _vs, var _fs
+
+	if (prg) {
+		glDeleteProgram prg
+	}
+	vso = _cmp(GL_VERTEX_SHADER, _vs)
+	fso = _cmp(GL_FRAGMENT_SHADER ,_fs)
+	glCreateProgram
+	prg = stat
+	glAttachShader prg, vso
+	glDeleteShader vso
+	glAttachShader prg, fso
+	glDeleteShader fso
+	glLinkProgram prg
+	; dim linked
+	glGetProgramiv prg, GL_LINK_STATUS, varptr(linked)
+
+	; dim bufsize
+	glGetProgramiv prg, GL_INFO_LOG_LENGTH, varptr(bufsize)
+	; dim len
+	sdim infoLog, bufsize
+	glGetProgramInfoLog prg, bufsize, varptr(len), varptr(infoLog)
+
+	return (linked != 0)
+
+
+#define global ctype getShaderLog(%1) infoLog@gls
+
+#define global startShader glUseProgram prg@gls
+#define global endShader glUseProgram 0
+
+#define global setUniform3(%1,%2,%3,%4) \
+	u@gls = %1 : glGetUniformLocation prg@gls, varptr(u@gls) : glUniform3i stat, %2, %3, %4
+
+
+#global

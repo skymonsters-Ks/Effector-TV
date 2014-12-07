@@ -1,0 +1,331 @@
+; HSP 3.4rc2
+
+/*
+#define CAPTION    "Effector TV"
+#define VERSION_S  "1.00"
+#define VERSION_I  100
+#define AUTHOR     "K-s"
+#define WEBPAGE    "http://uchitsukushi2.hatenablog.jp/entry/20141031/etv"
+*/
+
+#runtime "hsptv"
+#regcmd 18
+#cmd hsptv_send $00
+
+#uselib "winmm"
+#cfunc timer "timeGetTime"
+
+#uselib "user32"
+#func GetDC "GetDC" int
+#func ReleaseDC "ReleaseDC" int, int
+#func SetWindowLong "SetWindowLongA" int, int, int
+
+#uselib "gdi32"
+#cfunc ChoosePixelFormat "ChoosePixelFormat" int, var
+#func SetPixelFormat "SetPixelFormat" int, int, var
+#func SwapBuffers "SwapBuffers" int
+
+#uselib "opengl32"
+#func wglCreateContext "wglCreateContext" int
+#func wglDeleteContext "wglDeleteContext" int
+#func wglMakeCurrent "wglMakeCurrent" int, int
+#func global wglGetProcAddress "wglGetProcAddress" sptr  ; glfunc.hsp 内で使用
+#func glClear "glClear" int
+#func glRectd "glRectd" double, double, double, double
+#func glReadPixels "glReadPixels" int, int, int, int, int, int, var
+
+#define GL_COLOR_BUFFER_BIT  0x4000
+#define GL_BGR               0x80E0
+#define GL_UNSIGNED_BYTE     0x1401
+
+#include "glfunc.hsp"
+#include "glshader.hsp"
+
+
+#const PDFINI1 40/*sizeof(pfd)*/ | (1/*Version*/ << 16)
+#const PDFINI2 $4/*PFD_DRAW_TO_WINDOW*/ | $20/*PFD_SUPPORT_OPENGL*/ | $1/*PFD_DOUBLEBUFFER*/
+#const PDFINI3 $0/*PFD_TYPE_RGBA*/ | (32/*ColorBits*/ << 8)
+#const PDFINI4 32/*DepthBits*/ << 24
+
+#enum WIN_MAIN = 0
+#enum WIN_EDIT
+#enum WIN_LIST
+#enum WIN_LOG
+#enum WIN_TMPBUF
+
+
+	minus--
+
+	myDir = dir_cur
+
+	mainHwnd = hwnd
+	GetDC mainHwnd
+	wdc = stat
+
+	pfd = PDFINI1, PDFINI2, PDFINI3, 0, 0, PDFINI4
+	SetPixelFormat wdc, ChoosePixelFormat(wdc, pfd), pfd
+	wglCreateContext wdc
+	hrc = stat
+	wglMakeCurrent wdc, hrc
+
+	getFunc
+	if (stat) {
+		dialog "非対応です"
+		stop
+	}
+
+	vs = "void main(void){gl_Position=ftransform();}"
+
+	ls = "V void,B bool,I int,F float,B2 bvec2,B3 bvec3,B4 bvec4,I2 ivec2,I3 ivec3,I4 ivec4,V2 vec2,V3 vec3,V4 vec4,M2 mat2,M3 mat3,M4 mat4,PI 3.14159265359"
+	split ls, ",", ts
+	sdim fsb
+	repeat 17
+		fsb += "\n#define " + ts(cnt)
+	loop
+	fsb += "\nuniform I3 U;V2 VM=V2(U);F T=F(U.z)/1000.;V2 S=V2(640.,480.);V2 SS=V2(1.,-1.);V2 M=(VM*2.-S)/S.x*SS;V2 P=(gl_FragCoord.xy*2.-S)/S.x;V3 C=V3(0.);"
+
+	sdim fsrc, 256
+	fsrc = "F c=sin(P.x*cos(T*.27)*2.3)+cos(P.y*sin(T*.33)*2.6);F a=.01/abs(.5+.1*sin(T*.6)+.1*sin((atan(P.x,P.y)-length(M)+T*.5)*5.)-length(P));C=V3(a*.2+sin(T)*c,pow(a,sin(T+c)),c*.7)"
+
+	notesel fboard
+	hsptv_send fboard, minus
+
+	; 全ウィンドウ共通
+	onkey gosub *evKey
+
+	; スクリーンショット用
+	buffer WIN_TMPBUF, 640, 480
+
+	; HSPTVブラウザのウィンドウ（枠込）のサイズは 762x592
+	; 中のスクリーン（640x480）の左上座標は 64,81
+
+	makeWin WIN_LIST, 800, 365, 700, 100, 300
+	title "オンライン共有コードリスト"
+	sdim flist
+	objsize 800, 365
+	listbox flid, 0, flist
+	oncmd gosub *wmCommand, $111
+	gosub *setlist
+
+	makeWin WIN_LOG, 520, 100, , 580, 520
+	title "コンパイルログ"
+	sdim clog
+	mesbox clog, 520, 100, 0
+
+	makeWin WIN_EDIT, 800, 20, , 520, 800
+	title1 = "コードエディタ - 文字数:"
+	title title1
+	objmode 2
+	font msgothic, 14
+	input fsrc, 800, 20, 255
+
+	gosub *compile
+	if (succmp) {
+		sdim prefsrc
+	}
+
+*mainLoop
+	glClear GL_COLOR_BUFFER_BIT
+
+	startShader
+	setUniform3 "U", mousex, mousey, timer() - stime
+	glRectd minus, minus, 1, 1
+	endShader
+
+	wglMakeCurrent wdc, hrc
+	SwapBuffers wdc
+
+	if (fsrc != prefsrc) {
+		prefsrc = fsrc
+		edited++
+		dim succmp
+		gosub *dispEditorTitle
+	}
+
+	await 15
+	goto *mainLoop
+
+
+#deffunc makeWin int _id, int _sx, int _sy, int _x, int _y, int _ssx
+	gsel
+	screen _id, _sx, _sy, 11, limit(ginfo_wx1 + _x, 0, ginfo_dispx - 120), limit(ginfo_wy1 + _y, 0, ginfo_dispy - 120), _ssx
+	SetWindowLong hwnd, -16, $16c60000
+	return
+
+
+*evKey
+	if (lparam >> 30) : return
+	getkey ctrl, 17  ; Ctrl
+	if (wparam == 13) { ; Enter
+		if (ctrl) {
+			if (edited) {
+				return
+			}
+			if (succmp) {
+				dialog "アップロードしますか？", 2
+				if (stat == 6) {
+					hsptv_send fboard, minus
+					noteget s ; ランキングトップのスコア取得
+					ts = fsrc
+					strrep ts, "&", "$"
+					dim cancel
+					repeat notemax / 3
+						noteget tss, cnt * 3 + 2
+						if (ts == tss) {
+							cancel++
+						}
+					loop
+					if (cancel) {
+						dialog "同じコードがあります"
+					} else {
+						hsptv_send fboard, 0 + s + 1, ts
+						gosub *setList
+					}
+				}
+			}
+		} else {
+			gosub *compile
+		}
+	}
+	if (wparam == 79) { ; O
+		if (ctrl) {
+			dialog "etvs", 16
+			if (stat) {
+				sdim fsrc, 256
+				bload refstr, fsrc
+				gosub *changeEditSrc_Cmp
+			}
+		}
+	}
+	if (wparam == 83) { ; S
+		if (ctrl) {
+			dialog "etvs", 17
+			if (stat) {
+				bsave refstr, fsrc, strlen(fsrc)
+			}
+		}
+	}
+	if (wparam == 120) { ; F9
+		gsel WIN_TMPBUF
+		mref vram, 66
+		glReadPixels , , 640, 480, GL_BGR, GL_UNSIGNED_BYTE, vram
+		if (ctrl) {
+			dialog "bmp", 17
+			if (stat) {
+				bmpsave refstr
+			}
+		} else {
+			bmpsave "shot.bmp"
+		}
+		gsel
+	}
+	return
+
+
+*wmCommand
+	if (((wparam >> 16) & $ffff) == $2) {
+		getListFs_id = flid
+		gosub *getListFs
+		gosub *saveBackup
+		fsrc = getListFs_str
+		gosub *changeEditSrc_Cmp
+		if (succmp) {
+			sdim prefsrc
+		}
+	}
+	return
+
+
+*saveBackup
+	bsave myDir + "\\backup.etvs", fsrc, strlen(fsrc)
+	return
+
+
+*changeEditSrc_Cmp
+	gsel WIN_EDIT
+	objprm , fsrc
+	gosub *compile
+	return
+
+
+*dispEditorTitle
+	gsel WIN_EDIT
+	ts = "アップロードOK (Ctrl+Enter)"
+	if (edited) {
+		ts = "変更あり"
+	} else {
+		if (succmp) : else {
+			ts = "コンパイルエラー"
+		}
+	}
+	title title1 + strlen(fsrc) + "/255 - 状態:" + ts
+	gsel
+	return
+
+
+*compile
+	sdim fdst, 1024
+
+	dim sc
+	if (peek(fsrc) == '!') {
+		sdim sFunc
+		sc++
+	} else {
+		sFunc = "V main(V){"
+	}
+
+	dim p
+	repeat strlen(fsrc) - sc, sc
+		pc = peek(fsrc, cnt)
+		if (pc == 'R') {
+			c = peek(fsrc, cnt + 1)
+			n = strmid(fsrc, cnt + 2, 12)
+			ts = strf("for(F %c=0.;%c<%d.;%c++)", c, c, n, c)
+			poke fdst, p, ts
+			p += strsize
+			continue cnt + 2 + strlen(str(0 + n))
+		} else {
+			poke fdst, p, pc
+			p++
+		}
+	loop
+
+	fs = fsb + sFunc + fdst + ";gl_FragColor=V4(C,1.);}"
+	setprg vs, fs
+	succmp = stat
+	stime = timer()
+	prefsrc = fsrc
+	dim edited
+	gosub *dispEditorTitle
+	gsel WIN_LOG
+	objprm , getShaderLog()
+	gsel
+	return
+
+
+*setList
+	sdim flist, 9000
+	repeat 30
+		noteget s, cnt * 3
+		getListFs_id = cnt
+		gosub *getListFs
+		flist += strf("#%s : %s\n", s, getListFs_str)
+	loop
+	gsel WIN_LIST
+	objprm , flist
+	gsel
+	return
+
+
+*getListFs
+	noteget getListFs_str, getListFs_id * 3 + 2
+	strrep getListFs_str, "$", "&"
+	return
+
+
+#deffunc _z onexit
+	wglMakeCurrent wdc
+	wglDeleteContext hrc
+	ReleaseDC mainHwnd, wdc
+	gosub *saveBackup
+	return
